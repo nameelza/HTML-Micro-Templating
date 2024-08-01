@@ -8,6 +8,9 @@ const gAppPref = "mt-";
 const gFldDelim = /(?:\n[ \t]*)(?=\w)/g;
 const gRecDelim = /(?:\n[ \t]*){2,}(?=\w)/g;
 
+// global boolean to indicate if schema is embedded in html
+let gHasEmbeddedSchema;
+
 window.onload = function Merge_Templates() {
   // loop each container in body. Singlets first, then Collections.
 
@@ -16,16 +19,16 @@ window.onload = function Merge_Templates() {
   loopOrphanSinglets();
 
   // collection
-  const collViewNodes = document.querySelectorAll(
+  const collContainers = document.querySelectorAll(
     gAppPref + "container[" + gAppPref + "collection]"
   );
 
   // loop and render collection-containers
-  collViewNodes.forEach((collViewNode) => {
-    makeRecordsetHeaders(collViewNode);
+  collContainers.forEach((oContainer) => {
+    makeRecordsetHeaders(oContainer);
 
     // singlets
-    loopCollRecordsets(collViewNode);
+    loopCollRecordsets(oContainer);
   });
 };
 
@@ -112,30 +115,33 @@ function getCollectionRecordsets(collContainer) {
   return recordsets;
 }
 
-function getFields(viewNode) {
+function getFields(oContainer) {
   // return fields from mt-fields node, which is the parent of the collection or recordset
   // if view-container points to collection, get fieldset-name from collection data-container
   // if view-container points to recordset, get fieldset-name from recordset data-container
-  let sDataContainer = viewNode.getAttribute(gAppPref + "collection");
-  if (!sDataContainer)
-    sDataContainer = viewNode.getAttribute(gAppPref + "records");
+  let sRecordset =
+    oContainer.getAttribute(gAppPref + "collection") ||
+    oContainer.getAttribute(gAppPref + "records");
 
-  const dataNode = document.getElementById(sDataContainer);
+  const dataNode = document.getElementById(sRecordset);
+
+  // look for schema in HTML
   const schemaName = dataNode.getAttribute(gAppPref + "fields");
+  gHasEmbeddedSchema = !!schemaName;
 
-  let fields = [];
+  let rawFields;
 
   if (schemaName) {
-    // get fieldnames from mt-fields
+    // get fieldnames from schema if found in HTML
     const schemaNode = document.getElementById(schemaName);
-    const rawFields = schemaNode.innerText.trim();
-    fields = rawFields.split(gFldDelim);
+    rawFields = schemaNode.innerText.trim();
   } else {
-    // get fieldnames from mt-records
+    // get fieldnames from top of recordset, which look like the first record in the dataset
     const rawData = dataNode.innerText.trim();
-    const rawFields = rawData.split(gRecDelim)[0];
-    fields = rawFields.split(gFldDelim);
+    rawFields = rawData.split(gRecDelim)[0];
   }
+
+  const fields = rawFields.split(gFldDelim);
 
   return fields;
 }
@@ -181,11 +187,8 @@ function getRawData(container) {
   // get records contents
   let rawData = dataElement.innerText.trim();
 
-  // check if 'mt-fields' attribute exists
-  const schemaName = dataElement.getAttribute(gAppPref + "fields");
-
-  // remove the first record from records contents if no 'mt-fields' attribute
-  if (!schemaName) {
+  // remove field names (first record) if fieldnames embedded in data
+  if (!gHasEmbeddedSchema) {
     const rawRecords = rawData.split(gRecDelim);
     rawRecords.shift();
     rawData = rawRecords.join("\n\n");
